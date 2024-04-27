@@ -90,8 +90,8 @@ gss16_2 <- gss16_1 %>%
   mutate(polviews = 
            if_else(str_detect(polviews, "[Ll]iberal"), "Liberal", 
                    if_else(str_detect(polviews, "[Cc]onservative"), "Conservative",
-                           "Moderate"))) %>%
-  mutate(polviews = fct_relevel(polviews, "Conservative", "Moderate", "Liberal"))
+                           "Moderate")), 
+         polviews = fct_relevel(polviews, "Conservative", "Moderate", "Liberal"))
 ```
 
 ```{r}
@@ -102,7 +102,7 @@ gss16_2 %>%
 3.  Create a new data frame called `gss16_advfront` that includes the variables `advfront`, `educ`, `polviews`, and `wrkstat`. Then, use the `drop_na()` function to remove rows that contain `NA`s from this new data frame. Sample code is provided below.
 
 ```{r}
-gss16_advfront <- gss16 %>%
+gss16_advfront <- gss16_2 %>%
   select(advfront, educ, polviews, wrkstat) %>%
   drop_na()
 ```
@@ -127,22 +127,22 @@ gss16_test  <- testing(gss16_split)
 ```{r}
 gss16_rec_1 <- recipe(advfront ~ polviews+wrkstat+educ, data = gss16_advfront) %>%
   step_other(wrkstat, threshold = 0.10, other = "Other") %>%
-  step_dummy(all_nominal(), -all_outcomes())
+  step_dummy(all_nominal(), -all_outcomes()) 
 ```
 
 6.  Specify a logistic regression model using `"glm"` as the engine. Name this specification `gss16_spec`. Sample code is provided below.
 
-```{r eval=FALSE}
-gss16_spec <- ___() %>%
-  set_engine("glm")
+```{r}
+gss16_spec <- linear_reg() %>%
+  set_engine("glm") 
 ```
 
 7.  Build a workflow that uses the recipe you defined (`gss16_rec`) and the model you specified (`gss16_spec`). Name this workflow `gss16_wflow_1`. Sample code is provided below.
 
-```{r eval=FALSE}
+```{r}
 gss16_wflow_1 <- workflow() %>%
-  add_model(___) %>%
-  add_recipe(___)
+  add_model(gss16_spec) %>%
+  add_recipe(gss16_rec_1)
 ```
 
 8.  Perform 5-fold cross validation.
@@ -156,15 +156,15 @@ gss16_wflow_1 <- workflow() %>%
 
     -   report the average area under the ROC curve and the accuracy for all cross validation folds `collect_metrics()`
 
-```{r eval=FALSE}
-set.seed(___)
-gss16_folds <- vfold_cv(___, v = ___)
+```{r}
+set.seed(309)
+gss16_folds <- vfold_cv(gss16_train, v = 5)
 
 gss16_fit_rs_1 <- gss16_wflow_1 %>%
-  fit_resamples(___)
+  fit_resamples(gss16_folds)
 
-collect_metrics(___, summarize = FALSE)
-collect_metrics(___)
+collect_metrics(gss16_fit_rs_1, summarize = FALSE)
+#collect_metrics(gss16_fit_rs_1)
 ```
 
 9.  Now, try a different, simpler model: predict `advfront` from only `polviews` and `educ`.
@@ -174,8 +174,31 @@ collect_metrics(___)
     -   redefine the workflow with the new recipe (and name this new workflow `gss16_wflow_2`),
     -   perform cross validation, and
     -   report the average area under the ROC curve and the accuracy for all cross validation folds `collect_metrics()`.
+    
+```{r}
+gss16_rec_2 <- recipe(advfront ~ polviews + educ, data = gss16_advfront) %>%
+  #step_other(wrkstat, threshold = 0.10, other = "Other") %>%
+  step_dummy(all_nominal(), -all_outcomes()) 
+
+gss16_wflow_2 <- workflow() %>%
+  add_model(gss16_spec) %>%
+  add_recipe(gss16_rec_2)
+```
+
+```{r}
+set.seed(309)
+gss16_folds <- vfold_cv(gss16_train, v = 5)
+
+gss16_fit_rs_2 <- gss16_wflow_2 %>%
+  fit_resamples(gss16_folds)
+
+collect_metrics(gss16_fit_rs_2, summarize = FALSE)
+#collect_metrics(gss16_fit_rs_2)
+```
 
 10. Comment on which model performs better (one including `wrkstat`, model 1, or the one excluding `wrkstat`, model 2) on the training data based on area under the ROC curve.
+
+***I cannot tell which one works better because collect_metrics isn't working, but whichever one had a larger area under the ROC curve would be preforming better.***
 
 11. Fit both models to the testing data, plot the ROC curves for the predictions for both models, and calculate the areas under the ROC curve.
     Does your answer to the previous exercise hold for the testing data as well?
@@ -202,8 +225,38 @@ The question is phrased as the following.
 Answers to this question are stored in the `harass5` variable in our dataset.
 
 12. Create a subset of the data that only contains `Yes` and `No` answers for the harassment question. How many responses chose each of these answers?
+
+```{r}
+gss16_3 <- gss16 %>% 
+  mutate(harass5 = 
+           if_else(harass5==("Yes") | harass5==("No"), harass5, NA)) %>%
+  drop_na(harass5)
+
+gss16_3 %>%
+  count(harass5)
+```
+
+***1136 chose No, 237 chose Yes.***
+
 13. Describe how bootstrapping can be used to estimate the proportion of Americans who have been harassed by their superiors or co-workers at their job.
+
+***We would be resampling from the same dataset (gss16_3) with different seeds, so each sample acts like a different dataset.***
+
 14. Calculate a 95% bootstrap confidence interval for the proportion of Americans who have been harassed by their superiors or co-workers at their job. Interpret this interval in context of the data.
+
+```{r}
+gss16_3 %>% 
+  specify(response = harass5, success = "Yes") %>%
+  generate(reps = 100, type = "bootstrap") %>%
+  calculate(stat = "prop") %>%
+  summarise(lower = quantile(stat, 0.025),
+            upper = quantile(stat, 0.975))
+```
+
+***We are 95% confident that between 15.44064% and 18.94028% of Americans have been harassed by their co-workers or superiors at their job.***
+
 15. Would you expect a 90% confidence interval to be wider or narrower than the interval you calculated above? Explain your reasoning.
+
+***I would expect it to be narrower, because 90% has to adress less of a chance of differences, while 95% has to cover that extra 5%.***
 
 🧶 ✅ ⬆️ Knit, *commit, and push your changes to GitHub with an appropriate commit message. Make sure to commit and push all changed files so that your Git pane is cleared up afterwards and review the md document on GitHub to make sure you're happy with the final state of your work.*
